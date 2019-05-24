@@ -101,13 +101,14 @@ m = 1
 b = 3.13 * (10 ** (-5))
 d = 7.5 * (10 ** (-7))
 l = 0.25
+g = 9.83  # Gravity constant
 I_vec = array([I_x, I_y, I_z])  # Inertia moment vector
 I_matr = np.eye(3) * I_vec  # Inertia moment matrix
 angles_des = array([0, 0, 0])  # Desired angles
 
 q_des = q_matr(angles_des)  # Desired Q
 
-lmbd = 10.0  # Desired rate of convergence
+lmbd = 1.0  # Desired rate of convergence
 
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
@@ -135,3 +136,40 @@ plt.show()
 
 
 
+# Constructing controls
+
+
+def y_to_T(y):
+    y = array(y)
+    q = y[:9].reshape(3,3)
+    omega_vector = y[9:]
+    tau_norm = tau_norm_matr(q, omega_vector, lmbd)
+    return I_matr @ tau_norm
+
+
+def tau_to_r(tau):
+    return array([tau[0]/(b * l), tau[1]/(b * l), tau[2]/(d * l), (m * g)/b])
+
+
+def r_to_rotor_sq(r):
+    return array([(r[0] + r[1] + r[2] + r[3]) / 4,
+                  (-r[0] + r[1] - r[2] + r[3]) / 4,
+                  (r[0] - r[1] - r[2] + r[3]) / 4,
+                  (-r[0] - r[1] + r[2] + r[3]) / 4])
+
+
+solution = spi.odeint(dy_dt, y_0, t_span)
+
+tau_sol = array(list(map(y_to_T, solution)))
+r_sol = array(list(map(tau_to_r, tau_sol)))
+rotor_sol = array(list(map(r_to_rotor_sq, r_sol)))
+
+plt.xlabel("t")
+plt.ylabel("Rotor")
+plt.plot(t_span, rotor_sol[:, 0], 'b', label='Rotor_sq_1(t)')
+plt.plot(t_span, rotor_sol[:, 1], 'g', label='Rotor_sq_2(t)')
+plt.plot(t_span, rotor_sol[:, 2], 'r', label='Rotor_sq_3(t)')
+plt.plot(t_span, rotor_sol[:, 3], 'y', label='Rotor_sq_4(t)')
+plt.legend(loc='best')
+plt.grid()
+plt.show()
