@@ -21,7 +21,13 @@ def q_matr(angles_vec):
 
 # P = Q_desired.T * Q -> I — goal of control
 def p_matr(q):
-    return Q_des.T * q
+    return q_des.T @ q
+
+
+# Delta — goal of control
+def delta_matr(q):
+    p = p_matr(q)
+    return p - p.T
 
 
 # Omega — scew symmetric matrix made from angular velocities in the body frame
@@ -41,20 +47,39 @@ def theta_matr(omega_vec):
 # Tau — matrix of controls, solution of matrix equation
 # Normalized by inertia moment matrix
 def tau_norm_matr(q_matr, omega_vec, lmbd):
-    P = p_matr(q_matr)
-    Theta = theta_matr(omega_vec)
-    Omega = omega_matr(omega_vec)
+    p = p_matr(q_matr)
+    theta = theta_matr(omega_vec)
+    omega = omega_matr(omega_vec)
 
-    A = array([[P[1][1] + P[2][2], -P[1][0], -P[2][0]],
-               [-P[0][1], P[0][0] + P[2][2], -P[2][1]],
-               [-P[0][2], -P[1][2], P[0][0] + P[1][1]]])
+    a = array([[p[1][1] + p[2][2], -p[1][0], -p[2][0]],
+               [-p[0][1], p[0][0] + p[2][2], -p[2][1]],
+               [-p[0][2], -p[1][2], p[0][0] + p[1][1]]])
 
-    B = -P @ Omega @ Omega - P @ Theta + Omega @ Omega @ P.T - Omega @ P.T - 2 * lmbd * (P @ Omega + Omega @ P.T) - (
-            lmbd ** 2) * (P - P.T)
-    b = scew_to_vec(B)
+    b = -p @ omega @ omega - p @ theta + omega @ omega @ p.T - omega @ p.T - 2 * lmbd * (p @ omega + omega @ p.T) - (
+            lmbd ** 2) * (p - p.T)
+    result = scew_to_vec(b)
 
-    Tau_norm = np.linalg.solve(A, b)
-    return Tau_norm
+    tau_norm = np.linalg.solve(a, result)
+    return tau_norm
+
+
+# State vector time derivative function
+def dy_dt(y, t):
+    q = y[:9].reshape(3, 3)
+    omega_vector = y[9:]
+    omega_matrix = omega_matr(omega_vector)
+    tau_norm = tau_norm_matr(q, omega_vector, lmbd)
+
+    dq_dt = q @ omega_matrix
+    dw_dt = tau_norm - np.cross(I_vec, omega_vector) @ np.linalg.inv(I_matr)
+    return np.concatenate((dq_dt.reshape(9), dw_dt))
+
+
+# Convert q coordinates to vector delta
+def q_vec_to_delta_vec(q_vec):
+    q = array(q_vec).reshape(3, 3)
+    delta = delta_matr(q)
+    return scew_to_vec(delta).tolist()
 
 
 # Transformation of vector to scew-symmetric matrix
@@ -78,38 +103,35 @@ d = 7.5 * (10 ** (-7))
 l = 0.25
 I_vec = array([I_x, I_y, I_z])  # Inertia moment vector
 I_matr = np.eye(3) * I_vec  # Inertia moment matrix
+angles_des = array([0, 0, 0])  # Desired angles
 
-Q_des = q_matr(array([0, 0, 0]))  # Desired Q
+q_des = q_matr(angles_des)  # Desired Q
 
-lmbd = 0.1  # Desired rate of convergence
+lmbd = 10.0  # Desired rate of convergence
 
-angles_0 = array([pi / 8, pi / 8, pi / 8])  # Initial angles
-# angles_0 = array([0, 0, 0])            # Initial angles
+angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
+
+
+
 
 # Solving ODE
 
-t_span = np.linspace(0, 10 / lmbd, 100)
-y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))
-
-print(q_matr(angles_0))
-print(y_0[:9].reshape(3, 3))
+t_span = np.linspace(0, 10 / lmbd, 100)  # Time diapason
+y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))  # Initial state
 
 
-def dy_dt(y, t):
-    q = y[:9].reshape(3, 3)
-    omega_vector = y[9:]
-    omega_matrix = omega_matr(omega_vector)
-    tau_norm = tau_norm_matr(q, omega_vector, lmbd)
-
-    dq_dt = q @ omega_matrix
-    dw_dt = tau_norm - np.cross(I_vec, omega_vector) @ np.linalg.inv(I_matr)
-    return np.concatenate((dq_dt.reshape(9), dw_dt))
-
-
-dot_y = spi.odeint(dy_dt, y_0, t_span)
+sol = spi.odeint(dy_dt, y_0, t_span)
+delta_sol = array(list(map(q_vec_to_delta_vec, sol[:, :9])))
 
 plt.xlabel("t")
-plt.ylabel("y")
-plt.plot(t_span, dot_y)
+plt.ylabel("Delta")
+plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
+plt.plot(t_span, delta_sol[:, 1], 'g', label='Delta_2(t)')
+plt.plot(t_span, delta_sol[:, 2], 'r', label='Delta_3(t)')
+plt.legend(loc='best')
+plt.grid()
 plt.show()
+
+
+
