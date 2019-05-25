@@ -109,18 +109,16 @@ angles_des = array([0, 0, 0])  # Desired angles
 q_des = q_matr(angles_des)  # Desired Q
 
 lmbd = 1.0  # Desired rate of convergence
+sat_upper_boundary = 100000  # Upper boundary for square rotor angular speed
 
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
 
-
-
-
-# Solving ODE
-
-t_span = np.linspace(0, 10 / lmbd, 100)  # Time diapason
+# t_span = np.linspace(0, 10 / lmbd, 100)  # Time diapason
+t_span = np.linspace(0, 1, 100)  # Time diapason
 y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))  # Initial state
 
+# Integrating ODE without boundries
 
 sol = spi.odeint(dy_dt, y_0, t_span)
 delta_sol = array(list(map(q_vec_to_delta_vec, sol[:, :9])))
@@ -135,41 +133,44 @@ plt.grid()
 plt.show()
 
 
-
 # Constructing controls
 
-
-def y_to_T(y):
+def y_to_rotor_sq_sat(y):
     y = array(y)
-    q = y[:9].reshape(3,3)
+    q = y[:9].reshape(3, 3)
     omega_vector = y[9:]
     tau_norm = tau_norm_matr(q, omega_vector, lmbd)
-    return I_matr @ tau_norm
+    tau = I_matr @ tau_norm
+    r = array([tau[0] / (b * l), tau[1] / (b * l), tau[2] / (d * l), (m * g) / b])
+    rotor_sq = array([(r[0] + r[1] + r[2] + r[3]) / 4,
+                      (-r[0] + r[1] - r[2] + r[3]) / 4,
+                      (r[0] - r[1] - r[2] + r[3]) / 4,
+                      (-r[0] - r[1] + r[2] + r[3]) / 4])
+    for i in range(len(rotor_sq)):
+        if rotor_sq[i] < 0:
+            rotor_sq[i] = 0
+        if rotor_sq[i] > sat_upper_boundary:
+            rotor_sq[i] = sat_upper_boundary
+    return rotor_sq
 
 
-def tau_to_r(tau):
-    return array([tau[0]/(b * l), tau[1]/(b * l), tau[2]/(d * l), (m * g)/b])
-
-
-def r_to_rotor_sq(r):
-    return array([(r[0] + r[1] + r[2] + r[3]) / 4,
-                  (-r[0] + r[1] - r[2] + r[3]) / 4,
-                  (r[0] - r[1] - r[2] + r[3]) / 4,
-                  (-r[0] - r[1] + r[2] + r[3]) / 4])
+def sat_tau(sat_omega_sq):
+    return array([b * l * (sat_omega_sq[0] - sat_omega_sq[1] + sat_omega_sq[2] - sat_omega_sq[3]),
+                  b * l * (sat_omega_sq[0] + sat_omega_sq[1] - sat_omega_sq[2] - sat_omega_sq[3]),
+                  d * l * (sat_omega_sq[0] - sat_omega_sq[1] - sat_omega_sq[2] + sat_omega_sq[3])])
 
 
 solution = spi.odeint(dy_dt, y_0, t_span)
 
-tau_sol = array(list(map(y_to_T, solution)))
-r_sol = array(list(map(tau_to_r, tau_sol)))
-rotor_sol = array(list(map(r_to_rotor_sq, r_sol)))
+rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
+controls_sat = array(list(map(sat_tau, rotor_sol_sat)))
 
 plt.xlabel("t")
 plt.ylabel("Rotor")
-plt.plot(t_span, rotor_sol[:, 0], 'b', label='Rotor_sq_1(t)')
-plt.plot(t_span, rotor_sol[:, 1], 'g', label='Rotor_sq_2(t)')
-plt.plot(t_span, rotor_sol[:, 2], 'r', label='Rotor_sq_3(t)')
-plt.plot(t_span, rotor_sol[:, 3], 'y', label='Rotor_sq_4(t)')
+plt.plot(t_span, rotor_sol_sat[:, 0], 'b', label='Rotor_sq_1(t)')
+plt.plot(t_span, rotor_sol_sat[:, 1], 'g', label='Rotor_sq_2(t)')
+plt.plot(t_span, rotor_sol_sat[:, 2], 'r', label='Rotor_sq_3(t)')
+plt.plot(t_span, rotor_sol_sat[:, 3], 'y', label='Rotor_sq_4(t)')
 plt.legend(loc='best')
 plt.grid()
 plt.show()
