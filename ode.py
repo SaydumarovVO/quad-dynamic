@@ -7,6 +7,18 @@ import scipy.integrate as spi
 import matplotlib.pyplot as plt
 
 
+# Transformation of vector to scew-symmetric matrix
+def vec_to_scew(vec):
+    return array([[0, -vec[2], vec[1]],
+                  [vec[2], 0, -vec[0]],
+                  [-vec[1], vec[0], 0]])
+
+
+# Transformation of scew-symmetric matrix to vector
+def scew_to_vec(matr):
+    return array([matr[2][1], matr[0][2], matr[1][0]])
+
+
 # Q — Euler angles matrix
 def q_matr(angles_vec):
     psi = angles_vec[0]
@@ -26,8 +38,7 @@ def p_matr(q):
 
 # Delta — goal of control
 def delta_matr(q):
-    p = p_matr(q)
-    return p - p.T
+    return p_matr(q) - p_matr(q).T
 
 
 # Omega — scew symmetric matrix made from angular velocities in the body frame
@@ -82,59 +93,7 @@ def q_vec_to_delta_vec(q_vec):
     return scew_to_vec(delta).tolist()
 
 
-# Transformation of vector to scew-symmetric matrix
-def vec_to_scew(vec):
-    return array([[0, -vec[2], vec[1]],
-                  [vec[2], 0, -vec[0]],
-                  [-vec[1], vec[0], 0]])
-
-
-# Transformation of scew-symmetric matrix to vector
-def scew_to_vec(matr):
-    return array([matr[2][1], matr[0][2], matr[1][0]])
-
-
-# Quadrotor constants
-I_x = I_y = 7.5 * (10 ** (-3))
-I_z = 1.3 * (10 ** (-2))
-m = 1
-b = 3.13 * (10 ** (-5))
-d = 7.5 * (10 ** (-7))
-l = 0.25
-g = 9.83  # Gravity constant
-I_vec = array([I_x, I_y, I_z])  # Inertia moment vector
-I_matr = np.eye(3) * I_vec  # Inertia moment matrix
-angles_des = array([0, 0, 0])  # Desired angles
-
-q_des = q_matr(angles_des)  # Desired Q
-
-lmbd = 1.0  # Desired rate of convergence
-sat_upper_boundary = 100000  # Upper boundary for square rotor angular speed
-
-angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
-omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
-
-# t_span = np.linspace(0, 10 / lmbd, 100)  # Time diapason
-t_span = np.linspace(0, 1, 100)  # Time diapason
-y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))  # Initial state
-
-# Integrating ODE without boundries
-
-sol = spi.odeint(dy_dt, y_0, t_span)
-delta_sol = array(list(map(q_vec_to_delta_vec, sol[:, :9])))
-
-plt.xlabel("t")
-plt.ylabel("Delta")
-plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
-plt.plot(t_span, delta_sol[:, 1], 'g', label='Delta_2(t)')
-plt.plot(t_span, delta_sol[:, 2], 'r', label='Delta_3(t)')
-plt.legend(loc='best')
-plt.grid()
-plt.show()
-
-
-# Constructing controls
-
+# Convert state vector y to saturated squared rotor speeds
 def y_to_rotor_sq_sat(y):
     y = array(y)
     q = y[:9].reshape(3, 3)
@@ -154,23 +113,88 @@ def y_to_rotor_sq_sat(y):
     return rotor_sq
 
 
+# Convert saturated square rotor speeds to saturated controls
 def sat_tau(sat_omega_sq):
     return array([b * l * (sat_omega_sq[0] - sat_omega_sq[1] + sat_omega_sq[2] - sat_omega_sq[3]),
                   b * l * (sat_omega_sq[0] + sat_omega_sq[1] - sat_omega_sq[2] - sat_omega_sq[3]),
                   d * l * (sat_omega_sq[0] - sat_omega_sq[1] - sat_omega_sq[2] + sat_omega_sq[3])])
 
 
-solution = spi.odeint(dy_dt, y_0, t_span)
+# State vector time derivative function with saturated control
+def dy_sat_dt(y, t):
+    q = y[:9].reshape(3, 3)
+    omega_vector = y[9:]
+    omega_matrix = omega_matr(omega_vector)
+    tau_norm_sat = sat_tau(y_to_rotor_sq_sat(y))
 
-rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
-controls_sat = array(list(map(sat_tau, rotor_sol_sat)))
+    dq_dt = q @ omega_matrix
+    dw_dt = tau_norm_sat @ np.linalg.inv(I_matr) - np.cross(I_vec, omega_vector) @ np.linalg.inv(I_matr)
+    return np.concatenate((dq_dt.reshape(9), dw_dt))
+
+
+# Quadrotor constants
+
+I_x = I_y = 7.5 * (10 ** (-3))
+I_z = 1.3 * (10 ** (-2))
+m = 1
+b = 3.13 * (10 ** (-5))
+d = 7.5 * (10 ** (-7))
+l = 0.25
+g = 9.83  # Gravity constant
+I_vec = array([I_x, I_y, I_z])  # Inertia moment vector
+I_matr = np.eye(3) * I_vec  # Inertia moment matrix
+angles_des = array([0, 0, 0])  # Desired angles
+
+q_des = q_matr(angles_des)  # Desired Q
+
+lmbd = 10  # Desired rate of convergence
+sat_upper_boundary = 100000  # Upper boundary for square rotor angular speed
+
+angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
+omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
+
+t_span = np.linspace(0, 20 / lmbd, 100)  # Time diapason
+y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))  # Initial state
+
+
+# Integrating ODE without boundaries, building graphs for Delta(t)
+
+solution = spi.odeint(dy_dt, y_0, t_span)
+delta_sol = array(list(map(q_vec_to_delta_vec, solution[:, :9])))
 
 plt.xlabel("t")
-plt.ylabel("Rotor")
+plt.ylabel("Delta")
+plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
+plt.plot(t_span, delta_sol[:, 1], 'g', label='Delta_2(t)')
+plt.plot(t_span, delta_sol[:, 2], 'r', label='Delta_3(t)')
+plt.legend(loc='best')
+plt.grid()
+plt.show()
+
+# Constructing saturated rotor speeds, building graphs for Rotor_sq_speed(t)
+
+rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
+
+plt.xlabel("t")
+plt.ylabel("Square rotor speeds")
 plt.plot(t_span, rotor_sol_sat[:, 0], 'b', label='Rotor_sq_1(t)')
 plt.plot(t_span, rotor_sol_sat[:, 1], 'g', label='Rotor_sq_2(t)')
 plt.plot(t_span, rotor_sol_sat[:, 2], 'r', label='Rotor_sq_3(t)')
 plt.plot(t_span, rotor_sol_sat[:, 3], 'y', label='Rotor_sq_4(t)')
+plt.legend(loc='best')
+plt.grid()
+plt.show()
+
+# Integrating ODE with boundaries, building graphs for Delta_sat(t)
+
+solution_sat = spi.odeint(dy_sat_dt, y_0, t_span)
+delta_sol_sat = array(list(map(q_vec_to_delta_vec, solution_sat[:, :9])))
+
+plt.xlabel("t")
+plt.ylabel("Delta_sat")
+plt.plot(t_span, delta_sol_sat[:, 0], 'b', label='Delta_sat_1(t)')
+plt.plot(t_span, delta_sol_sat[:, 1], 'g', label='Delta_sat_2(t)')
+plt.plot(t_span, delta_sol_sat[:, 2], 'r', label='Delta_sat_3(t)')
 plt.legend(loc='best')
 plt.grid()
 plt.show()
