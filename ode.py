@@ -132,6 +132,65 @@ def dy_sat_dt(y, t):
     return np.concatenate((dq_dt.reshape(9), dw_dt))
 
 
+# Integrating ODE without boundaries, building graphs for Delta(t)
+def build_delta_solution(angles_init, omega_init):
+    y_init = np.concatenate((q_matr(angles_init).reshape(9), omega_init))  # Initial state
+    solution = spi.odeint(dy_dt, y_init, t_span)
+    delta_sol = array(list(map(q_vec_to_delta_vec, solution[:, :9])))
+
+    plt.xlabel("t")
+    plt.ylabel("Delta")
+    plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
+    plt.plot(t_span, delta_sol[:, 1], 'g', label='Delta_2(t)')
+    plt.plot(t_span, delta_sol[:, 2], 'r', label='Delta_3(t)')
+    plt.legend(loc='best')
+    plt.grid()
+    plt.show()
+    return delta_sol
+
+
+# Constructing saturated rotor speeds, building graphs for Rotor_sq_speed(t)
+def build_saturated_rotor_speeds(angles_init, omega_init):
+    y_init = np.concatenate((q_matr(angles_init).reshape(9), omega_init))  # Initial state
+    solution = spi.odeint(dy_dt, y_init, t_span)
+    rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
+
+    plt.xlabel("t")
+    plt.ylabel("Square rotor speeds")
+    plt.plot(t_span, rotor_sol_sat[:, 0], 'b', label='Rotor_sq_1(t)')
+    plt.plot(t_span, rotor_sol_sat[:, 1], 'g', label='Rotor_sq_2(t)')
+    plt.plot(t_span, rotor_sol_sat[:, 2], 'r', label='Rotor_sq_3(t)')
+    plt.plot(t_span, rotor_sol_sat[:, 3], 'y', label='Rotor_sq_4(t)')
+    plt.legend(loc='best')
+    plt.grid()
+    plt.show()
+    return rotor_sol_sat
+
+
+# Integrating ODE with boundaries, building graphs for Delta_sat(t)
+def build_delta_sat_solution(angles_init, omega_init):
+    y_init = np.concatenate((q_matr(angles_init).reshape(9), omega_init))  # Initial state
+    solution_sat = spi.odeint(dy_sat_dt, y_init, t_span)
+    delta_sol_sat = array(list(map(q_vec_to_delta_vec, solution_sat[:, :9])))
+
+    title = "Lambda: {}, Angles: [{}, {}, {}], Omega: [{}, {}, {}]" \
+        .format(
+        lmbd,
+        round(angles_init[0], 2), round(angles_init[1], 2), round(angles_init[2], 2),
+        round(omega_init[0], 2), round(omega_init[1], 2), round(omega_init[2], 2))
+
+    plt.title(title)
+    plt.xlabel("t")
+    plt.ylabel("Delta_sat")
+    plt.plot(t_span, delta_sol_sat[:, 0], 'b', label='Delta_sat_1(t)')
+    plt.plot(t_span, delta_sol_sat[:, 1], 'g', label='Delta_sat_2(t)')
+    plt.plot(t_span, delta_sol_sat[:, 2], 'r', label='Delta_sat_3(t)')
+    plt.legend(loc='best')
+    plt.grid()
+    plt.show()
+    return delta_sol_sat
+
+
 # Quadrotor constants
 
 I_x = I_y = 7.5 * (10 ** (-3))
@@ -147,54 +206,15 @@ angles_des = array([0, 0, 0])  # Desired angles
 
 q_des = q_matr(angles_des)  # Desired Q
 
-lmbd = 10  # Desired rate of convergence
+lmbd = 1.0  # Desired rate of convergence
 sat_upper_boundary = 100000  # Upper boundary for square rotor angular speed
 
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
 
-t_span = np.linspace(0, 20 / lmbd, 100)  # Time diapason
-y_0 = np.concatenate((q_matr(angles_0).reshape(9), omega_0))  # Initial state
+t_span = np.linspace(0, 25 / lmbd, 500)  # Time diapason
 
+for i in range(8):
+    angles_0 = array([i * pi / 16, i * pi / 16, i * pi / 16])
+    build_delta_sat_solution(angles_0, omega_0)
 
-# Integrating ODE without boundaries, building graphs for Delta(t)
-
-solution = spi.odeint(dy_dt, y_0, t_span)
-delta_sol = array(list(map(q_vec_to_delta_vec, solution[:, :9])))
-
-plt.xlabel("t")
-plt.ylabel("Delta")
-plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
-plt.plot(t_span, delta_sol[:, 1], 'g', label='Delta_2(t)')
-plt.plot(t_span, delta_sol[:, 2], 'r', label='Delta_3(t)')
-plt.legend(loc='best')
-plt.grid()
-plt.show()
-
-# Constructing saturated rotor speeds, building graphs for Rotor_sq_speed(t)
-
-rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
-
-plt.xlabel("t")
-plt.ylabel("Square rotor speeds")
-plt.plot(t_span, rotor_sol_sat[:, 0], 'b', label='Rotor_sq_1(t)')
-plt.plot(t_span, rotor_sol_sat[:, 1], 'g', label='Rotor_sq_2(t)')
-plt.plot(t_span, rotor_sol_sat[:, 2], 'r', label='Rotor_sq_3(t)')
-plt.plot(t_span, rotor_sol_sat[:, 3], 'y', label='Rotor_sq_4(t)')
-plt.legend(loc='best')
-plt.grid()
-plt.show()
-
-# Integrating ODE with boundaries, building graphs for Delta_sat(t)
-
-solution_sat = spi.odeint(dy_sat_dt, y_0, t_span)
-delta_sol_sat = array(list(map(q_vec_to_delta_vec, solution_sat[:, :9])))
-
-plt.xlabel("t")
-plt.ylabel("Delta_sat")
-plt.plot(t_span, delta_sol_sat[:, 0], 'b', label='Delta_sat_1(t)')
-plt.plot(t_span, delta_sol_sat[:, 1], 'g', label='Delta_sat_2(t)')
-plt.plot(t_span, delta_sol_sat[:, 2], 'r', label='Delta_sat_3(t)')
-plt.legend(loc='best')
-plt.grid()
-plt.show()
