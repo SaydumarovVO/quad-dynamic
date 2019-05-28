@@ -155,6 +155,13 @@ def build_saturated_rotor_speeds(angles_init, omega_init):
     solution = spi.odeint(dy_dt, y_init, t_span)
     rotor_sol_sat = array(list(map(y_to_rotor_sq_sat, solution)))
 
+    title = "Lambda: {}, Angles: [{}, {}, {}], Omega: [{}, {}, {}]" \
+        .format(
+        lmbd,
+        round(angles_init[0], 2), round(angles_init[1], 2), round(angles_init[2], 2),
+        round(omega_init[0], 2), round(omega_init[1], 2), round(omega_init[2], 2))
+
+    plt.title(title)
     plt.xlabel("t")
     plt.ylabel("Square rotor speeds")
     plt.plot(t_span, rotor_sol_sat[:, 0], 'b', label='Rotor_sq_1(t)')
@@ -193,12 +200,12 @@ def build_delta_sat_solution(angles_init, omega_init):
 
 # Quadrotor constants
 
-I_x = I_y = 7.5 * (10 ** (-3))
-I_z = 1.3 * (10 ** (-2))
-m = 1
-b = 3.13 * (10 ** (-5))
-d = 7.5 * (10 ** (-7))
-l = 0.25
+I_x = I_y = 1.8 * (10 ** (-2))
+I_z = 3.6 * (10 ** (-2))
+m = 0.5
+b = 2.04 * (10 ** (-4))
+d = 2.04 * (10 ** (-5))
+l = 0.3
 g = 9.83  # Gravity constant
 I_vec = array([I_x, I_y, I_z])  # Inertia moment vector
 I_matr = np.eye(3) * I_vec  # Inertia moment matrix
@@ -207,14 +214,17 @@ angles_des = array([0, 0, 0])  # Desired angles
 q_des = q_matr(angles_des)  # Desired Q
 
 lmbd = 1.0  # Desired rate of convergence
-sat_upper_boundary = 100000  # Upper boundary for square rotor angular speed
+sat_upper_boundary = 25600  # Upper boundary for square rotor angular speed
 
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
 
-t_span = np.linspace(0, 25 / lmbd, 500)  # Time diapason
+t_span = np.linspace(0, 25 / lmbd, 1000)  # Time diapason
 
-for i in range(8):
-    angles_0 = array([i * pi / 16, i * pi / 16, i * pi / 16])
-    build_delta_sat_solution(angles_0, omega_0)
+build_saturated_rotor_speeds(angles_0, omega_0)
+
+#
+# for i in range(8):
+#     angles_0 = array([i * pi / 16, i * pi / 16, i * pi / 16])
+#     build_delta_sat_solution(angles_0, omega_0)
 
