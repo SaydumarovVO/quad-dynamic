@@ -1,5 +1,7 @@
 from math import sin
 from math import cos
+from math import atan2
+from math import asin
 from math import pi
 from numpy import array
 import numpy as np
@@ -74,6 +76,33 @@ def tau_norm_matr(q_matr, omega_vec, lmbd):
     return tau_norm
 
 
+# Approximation function
+def is_close(x, y, rt=1.e-5, at=1.e-8):
+    return abs(y - x) <= rt * abs(y) + at
+
+
+# Euler matrix to angles
+def q_to_angles(q_matr):
+    phi = 0.0
+    if is_close(q_matr[2, 0], 1.0):
+        psi = atan2(-q_matr[0, 1], -q_matr[0, 2])
+        theta = -pi / 2.0
+    elif is_close(q_matr[2, 0], -1.0):
+        psi = atan2(q_matr[0, 1], q_matr[0, 2])
+        theta = pi / 2.0
+    else:
+        theta = -asin(q_matr[2, 0])
+        psi = atan2(q_matr[2, 1] / cos(theta), q_matr[2, 2] / cos(theta))
+        phi = atan2(q_matr[1, 0] / cos(theta), q_matr[0, 0] / cos(theta))
+    return psi, theta, phi
+
+
+def alarm_big_angle(angles, angle_0=1.5):
+    for angle in angles:
+        if angle <= -angle_0 or angle >= angle_0:
+            print("Angle {} is too big".format(angle))
+
+
 # State vector time derivative function
 def dy_dt(y, t):
     q = y[:9].reshape(3, 3)
@@ -97,6 +126,7 @@ def q_vec_to_delta_vec(q_vec):
 def y_to_rotor_sq_sat(y):
     y = array(y)
     q = y[:9].reshape(3, 3)
+    alarm_big_angle(q_to_angles(q))
     omega_vector = y[9:]
     tau_norm = tau_norm_matr(q, omega_vector, lmbd)
     tau = I_matr @ tau_norm
@@ -223,8 +253,4 @@ t_span = np.linspace(0, 25 / lmbd, 1000)  # Time diapason
 
 build_saturated_rotor_speeds(angles_0, omega_0)
 
-#
-# for i in range(8):
-#     angles_0 = array([i * pi / 16, i * pi / 16, i * pi / 16])
-#     build_delta_sat_solution(angles_0, omega_0)
-
+build_delta_sat_solution(angles_0, omega_0)
