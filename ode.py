@@ -1,8 +1,4 @@
-from math import sin
-from math import cos
-from math import atan2
-from math import asin
-from math import pi
+from math import sin, cos, atan2, asin, pi
 from numpy import array
 import numpy as np
 import scipy.integrate as spi
@@ -81,6 +77,11 @@ def is_close(x, y, rt=1.e-5, at=1.e-8):
     return abs(y - x) <= rt * abs(y) + at
 
 
+# Approximation function
+def clean_sin(sin_angle):
+    return min(1, max(sin_angle, -1))
+
+
 # Euler matrix to angles
 def q_to_angles(q_matr):
     phi = 0.0
@@ -91,16 +92,18 @@ def q_to_angles(q_matr):
         psi = atan2(q_matr[0, 1], q_matr[0, 2])
         theta = pi / 2.0
     else:
-        theta = -asin(q_matr[2, 0])
+        theta = -asin(clean_sin(q_matr[2, 0]))
         psi = atan2(q_matr[2, 1] / cos(theta), q_matr[2, 2] / cos(theta))
         phi = atan2(q_matr[1, 0] / cos(theta), q_matr[0, 0] / cos(theta))
     return psi, theta, phi
 
 
-def alarm_big_angle(angles, angle_0=1.5):
+# Returns true if one of given angle is too big
+def has_big_angle(angles, angle_0=1.5):
     for angle in angles:
         if angle <= -angle_0 or angle >= angle_0:
-            print("Angle {} is too big".format(angle))
+            return True
+    return False
 
 
 # State vector time derivative function
@@ -126,15 +129,15 @@ def q_vec_to_delta_vec(q_vec):
 def y_to_rotor_sq_sat(y):
     y = array(y)
     q = y[:9].reshape(3, 3)
-    alarm_big_angle(q_to_angles(q))
     omega_vector = y[9:]
     tau_norm = tau_norm_matr(q, omega_vector, lmbd)
     tau = I_matr @ tau_norm
     r = array([tau[0] / (b * l), tau[1] / (b * l), tau[2] / (d * l), (m * g) / b])
-    rotor_sq = array([(r[0] + r[1] + r[2] + r[3]) / 4,
-                      (-r[0] + r[1] - r[2] + r[3]) / 4,
-                      (r[0] - r[1] - r[2] + r[3]) / 4,
-                      (-r[0] - r[1] + r[2] + r[3]) / 4])
+
+    rotor_sq = array([(-2 * r[0] - r[2] + r[3]) / 4,
+                      (-2 * r[1] + r[2] + r[3]) / 4,
+                      (2 * r[0] - r[2] + r[3]) / 4,
+                      (2 * r[1] + r[2] + r[3]) / 4])
     for i in range(len(rotor_sq)):
         if rotor_sq[i] < 0:
             rotor_sq[i] = 0
@@ -145,9 +148,9 @@ def y_to_rotor_sq_sat(y):
 
 # Convert saturated square rotor speeds to saturated controls
 def sat_tau(sat_omega_sq):
-    return array([b * l * (sat_omega_sq[0] - sat_omega_sq[1] + sat_omega_sq[2] - sat_omega_sq[3]),
-                  b * l * (sat_omega_sq[0] + sat_omega_sq[1] - sat_omega_sq[2] - sat_omega_sq[3]),
-                  d * l * (sat_omega_sq[0] - sat_omega_sq[1] - sat_omega_sq[2] + sat_omega_sq[3])])
+    return array([b * l * (-sat_omega_sq[0] + sat_omega_sq[2]),
+                  b * l * (-sat_omega_sq[1] + sat_omega_sq[3]),
+                  d * l * (-sat_omega_sq[0] + sat_omega_sq[1] - sat_omega_sq[2] + sat_omega_sq[3])])
 
 
 # State vector time derivative function with saturated control
@@ -228,6 +231,17 @@ def build_delta_sat_solution(angles_init, omega_init):
     return delta_sol_sat
 
 
+# Method that marks if delta_sat_solution converges for given initial conditions
+def is_delta_sat_converges(angles_init, omega_init):
+    y_init = np.concatenate((q_matr(angles_init).reshape(9), omega_init))  # Initial state
+    solution_sat = spi.odeint(dy_sat_dt, y_init, t_span)
+    angles_data = [q_to_angles(q.reshape(3, 3)) for q in solution_sat[:, :9]]
+    for angles_vec in angles_data:
+        if has_big_angle(angles_vec):
+            return False
+    return True
+
+
 # Quadrotor constants
 
 I_x = I_y = 1.8 * (10 ** (-2))
@@ -247,10 +261,58 @@ lmbd = 1.0  # Desired rate of convergence
 sat_upper_boundary = 25600  # Upper boundary for square rotor angular speed
 
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
-omega_0 = array([0, 0, 0])  # Initial angular velocities in the body frame
+omega_0 = array([-2, -2, -2])  # Initial angular velocities in the body frame
 
-t_span = np.linspace(0, 25 / lmbd, 1000)  # Time diapason
+t_span = np.linspace(0, 25 / lmbd, 100)  # Time diapason
 
-build_saturated_rotor_speeds(angles_0, omega_0)
+omega_s, omega_step = np.linspace(-3.5, 3.5, 10, retstep=True)
+angles_s, angles_step = np.linspace(-1.5, 1.5, 10, retstep=True)
 
-build_delta_sat_solution(angles_0, omega_0)
+roa = array([0, 0, True])
+
+for om in omega_s:
+    for an in angles_s:
+        data = array([an, om, is_delta_sat_converges(array([an, an, an]), array([om, om, om]))])
+        roa = np.vstack((roa, data))
+
+roa = array(list(filter(lambda x: x[2] == 1, roa[1:])))
+roa = roa[:, :2]
+
+print(roa)
+
+border = array([0, 0])
+
+for om in omega_s:
+    for an in angles_s:
+        if -3.5 < om < 3.5 and -1.5 < an < 1.5:
+            om_prev = om - omega_step
+            om_next = om + omega_step
+            an_prev = an - angles_step
+            an_next = an + angles_step
+            if array([an, om]) in roa:
+                if (array([an_prev, om]) not in roa) \
+                        or (array([an_next, om]) not in roa) \
+                        or (array([an, om_prev]) not in roa) \
+                        or (array([an, om_next]) not in roa):
+                    border = np.vstack((border, array([an, om])))
+
+border = border[1:]
+
+fig = plt.figure()
+ax = fig.add_subplot(111)
+scatter = ax.scatter(border[:, 0], border[:, 1])
+ax.set_xlabel('Angle')
+ax.set_ylabel('Omega')
+plt.colorbar(scatter)
+
+fig.show()
+
+
+# fig = plt.figure()
+# ax = fig.add_subplot(111)
+# scatter = ax.scatter(roa[:, 0], roa[:, 1], c=roa[:, 2])
+# ax.set_xlabel('Angle')
+# ax.set_ylabel('Omega')
+# plt.colorbar(scatter)
+#
+# fig.show()
