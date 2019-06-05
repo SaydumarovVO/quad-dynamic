@@ -241,9 +241,28 @@ def is_delta_sat_converges(angles_init, omega_init):
             return False
     return True
 
-
-def check(test, array):
+# Check if element is in array
+def is_elem_in_array(test, array):
     return any(np.array_equal(x, test) for x in array)
+
+
+# Building a line to divide border on two parts for more convenient interpolation
+def build_diagonal(dataset):
+    xmin = np.amin(dataset[:, 0])
+    ymin = np.amin(dataset[:, 1])
+    xmax = np.amax(dataset[:, 0])
+    ymax = np.amax(dataset[:, 1])
+
+    left_upper = array([xmin, np.amax(array(list(filter(lambda elem: elem[0] == xmin, dataset)))[:, 1])])
+    upper_left = array([np.amin(array(list(filter(lambda elem: elem[1] == ymax, dataset)))[:, 0]), ymax])
+
+    right_lower = array([xmax, np.amin(array(list(filter(lambda elem: elem[0] == xmax, dataset)))[:, 1])])
+    lower_right = array([np.amax(array(list(filter(lambda elem: elem[1] == ymin, dataset)))[:, 0]), ymin])
+
+    upper_left_certer = array([(left_upper[0] + upper_left[0]) / 2, (left_upper[1] + upper_left[1]) / 2])
+    lower_right_certer = array([(right_lower[0] + lower_right[0]) / 2, (right_lower[1] + lower_right[1]) / 2])
+
+    return array([upper_left_certer, lower_right_certer])
 
 # Quadrotor constants
 
@@ -307,7 +326,7 @@ for an in angles_s:
     prev_bool = False
     prev_roa = array([])
     for om in omega_s:
-        curr_bool = check(array([an, om]), roa)
+        curr_bool = is_elem_in_array(array([an, om]), roa)
 
         if not prev_bool and curr_bool:
             border = np.vstack((border, array([an, om])))
@@ -323,3 +342,6 @@ border = np.unique(border, axis=0)
 plt.plot(border[:, 0], border[:, 1], 'ro')
 plt.grid()
 plt.show()
+
+
+print("Centers are ", build_diagonal(border))
