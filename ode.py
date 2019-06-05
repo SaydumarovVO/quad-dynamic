@@ -242,6 +242,9 @@ def is_delta_sat_converges(angles_init, omega_init):
     return True
 
 
+def check(test, array):
+    return any(np.array_equal(x, test) for x in array)
+
 # Quadrotor constants
 
 I_x = I_y = 1.8 * (10 ** (-2))
@@ -265,54 +268,58 @@ omega_0 = array([-2, -2, -2])  # Initial angular velocities in the body frame
 
 t_span = np.linspace(0, 25 / lmbd, 100)  # Time diapason
 
-omega_s, omega_step = np.linspace(-3.5, 3.5, 10, retstep=True)
-angles_s, angles_step = np.linspace(-1.5, 1.5, 10, retstep=True)
+omega_s = np.linspace(-3.5, 3.5, 10)
+angles_s = np.linspace(-1.5, 1.5, 10)
 
 roa = array([0, 0, True])
-
-for om in omega_s:
-    for an in angles_s:
-        data = array([an, om, is_delta_sat_converges(array([an, an, an]), array([om, om, om]))])
-        roa = np.vstack((roa, data))
-
-roa = array(list(filter(lambda x: x[2] == 1, roa[1:])))
-roa = roa[:, :2]
-
-print(roa)
 
 border = array([0, 0])
 
 for om in omega_s:
+    prev_bool = False
+    prev_roa = array([])
     for an in angles_s:
-        if -3.5 < om < 3.5 and -1.5 < an < 1.5:
-            om_prev = om - omega_step
-            om_next = om + omega_step
-            an_prev = an - angles_step
-            an_next = an + angles_step
-            if array([an, om]) in roa:
-                if (array([an_prev, om]) not in roa) \
-                        or (array([an_next, om]) not in roa) \
-                        or (array([an, om_prev]) not in roa) \
-                        or (array([an, om_next]) not in roa):
-                    border = np.vstack((border, array([an, om])))
+        data = array([an, om, is_delta_sat_converges(array([an, an, an]), array([om, om, om]))])
+        roa = np.vstack((roa, data))
 
-border = border[1:]
+        if not prev_bool and data[2]:
+            border = np.vstack((border, array([an, om])))
+        elif prev_bool and not data[2]:
+            border = np.vstack((border, prev_roa[:2]))
+
+        prev_bool = data[2]
+        prev_roa = data
+
+
+roa = array(list(filter(lambda x: x[2] == 1, roa[1:])))
 
 fig = plt.figure()
 ax = fig.add_subplot(111)
-scatter = ax.scatter(border[:, 0], border[:, 1])
+scatter = ax.scatter(roa[:, 0], roa[:, 1], c=roa[:, 2])
 ax.set_xlabel('Angle')
 ax.set_ylabel('Omega')
 plt.colorbar(scatter)
-
 fig.show()
 
+roa = roa[:, :2]
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111)
-# scatter = ax.scatter(roa[:, 0], roa[:, 1], c=roa[:, 2])
-# ax.set_xlabel('Angle')
-# ax.set_ylabel('Omega')
-# plt.colorbar(scatter)
-#
-# fig.show()
+for an in angles_s:
+    prev_bool = False
+    prev_roa = array([])
+    for om in omega_s:
+        curr_bool = check(array([an, om]), roa)
+
+        if not prev_bool and curr_bool:
+            border = np.vstack((border, array([an, om])))
+        elif prev_bool and not curr_bool:
+            border = np.vstack((border, prev_roa))
+
+        prev_bool = curr_bool
+        prev_roa = array([an, om])
+
+border = border[1:]
+border = np.unique(border, axis=0)
+
+plt.plot(border[:, 0], border[:, 1], 'ro')
+plt.grid()
+plt.show()
