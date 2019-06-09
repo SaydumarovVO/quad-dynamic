@@ -336,7 +336,7 @@ omega_seq = np.linspace(-4, 4, 100)
 angles_seq = np.linspace(-1.5, 1.5, 100)
 
 
-# Execution part. Algorithms runs there
+# Execution part. Algorithms run there
 
 build_delta_solution(angles_0, omega_0)
 build_saturated_rotor_speeds(angles_0, omega_0)
