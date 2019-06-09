@@ -69,6 +69,10 @@ def tau_norm_matr(q_matr, omega_vec, lmbd):
             lmbd ** 2) * (p - p.T)
     result = scew_to_vec(b)
 
+    det_a = np.linalg.det(a)
+    if det_a == 0:
+        return array([0, 0, 0])
+
     tau_norm = np.linalg.solve(a, result)
     return tau_norm
 
@@ -172,6 +176,13 @@ def build_delta_solution(angles_init, omega_init):
     solution = spi.odeint(dy_dt, y_init, t_span)
     delta_sol = array(list(map(q_vec_to_delta_vec, solution[:, :9])))
 
+    title = "Lambda: {}, Angles: [{}, {}, {}], Omega: [{}, {}, {}]" \
+        .format(
+        lmbd,
+        round(angles_init[0], 2), round(angles_init[1], 2), round(angles_init[2], 2),
+        round(omega_init[0], 2), round(omega_init[1], 2), round(omega_init[2], 2))
+
+    plt.title(title)
     plt.xlabel("t")
     plt.ylabel("Delta")
     plt.plot(t_span, delta_sol[:, 0], 'b', label='Delta_1(t)')
@@ -358,8 +369,8 @@ q_des = q_matr(angles_des)  # Desired Q
 lmbd = 1.0  # Desired rate of convergence
 sat_upper_boundary = 25600  # Upper boundary for square rotor angular speed
 
-angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
-omega_0 = array([-2, -2, -2])  # Initial angular velocities in the body frame
+angles_0 = array([-1, -1, -1])  # Initial angles
+omega_0 = array([-1.5, -1.5, -1.5])  # Initial angular velocities in the body frame
 
 t_span = np.linspace(0, 25 / lmbd, 1000)  # Time diapason
 
