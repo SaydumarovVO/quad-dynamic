@@ -1,5 +1,6 @@
 from math import sin, cos, atan2, asin, pi
 from numpy import array
+from scipy import interpolate
 import numpy as np
 import scipy.integrate as spi
 import matplotlib.pyplot as plt
@@ -86,15 +87,15 @@ def clean_sin(sin_angle):
 def q_to_angles(q_matr):
     phi = 0.0
     if is_close(q_matr[2, 0], 1.0):
-        psi = atan2(-q_matr[0, 1], -q_matr[0, 2])
+        psi = atan2(-q_matr[0, 1], q_matr[0, 2])
         theta = -pi / 2.0
     elif is_close(q_matr[2, 0], -1.0):
         psi = atan2(q_matr[0, 1], q_matr[0, 2])
         theta = pi / 2.0
     else:
         theta = -asin(clean_sin(q_matr[2, 0]))
-        psi = atan2(q_matr[2, 1] / cos(theta), q_matr[2, 2] / cos(theta))
-        phi = atan2(q_matr[1, 0] / cos(theta), q_matr[0, 0] / cos(theta))
+        phi = atan2(q_matr[2, 1] / cos(theta), q_matr[2, 2] / cos(theta))
+        psi = atan2(q_matr[1, 0] / cos(theta), q_matr[0, 0] / cos(theta))
     return psi, theta, phi
 
 
@@ -241,28 +242,103 @@ def is_delta_sat_converges(angles_init, omega_init):
             return False
     return True
 
+
 # Check if element is in array
 def is_elem_in_array(test, array):
     return any(np.array_equal(x, test) for x in array)
 
 
-# Building a line to divide border on two parts for more convenient interpolation
-def build_diagonal(dataset):
-    xmin = np.amin(dataset[:, 0])
-    ymin = np.amin(dataset[:, 1])
-    xmax = np.amax(dataset[:, 0])
-    ymax = np.amax(dataset[:, 1])
+# Method that builds inner inclusion of region of attraction for given angular and angular speed diapasons
+def build_roa_with_border(angles_s, omega_s):
+    roa = array([0, 0, True])
+    border = array([0, 0])
 
-    left_upper = array([xmin, np.amax(array(list(filter(lambda elem: elem[0] == xmin, dataset)))[:, 1])])
-    upper_left = array([np.amin(array(list(filter(lambda elem: elem[1] == ymax, dataset)))[:, 0]), ymax])
+    for om in omega_s:
+        prev_bool = False
+        prev_roa = array([])
+        for an in angles_s:
+            data = array([an, om, is_delta_sat_converges(array([an, an, an]), array([om, om, om]))])
+            roa = np.vstack((roa, data))
 
-    right_lower = array([xmax, np.amin(array(list(filter(lambda elem: elem[0] == xmax, dataset)))[:, 1])])
-    lower_right = array([np.amax(array(list(filter(lambda elem: elem[1] == ymin, dataset)))[:, 0]), ymin])
+            if not prev_bool and data[2]:
+                border = np.vstack((border, array([an, om])))
+            elif prev_bool and not data[2]:
+                border = np.vstack((border, prev_roa[:2]))
 
-    upper_left_certer = array([(left_upper[0] + upper_left[0]) / 2, (left_upper[1] + upper_left[1]) / 2])
-    lower_right_certer = array([(right_lower[0] + lower_right[0]) / 2, (right_lower[1] + lower_right[1]) / 2])
+            prev_bool = data[2]
+            prev_roa = data
 
-    return array([upper_left_certer, lower_right_certer])
+    roa = array(list(filter(lambda x: x[2] == 1, roa[1:])))
+    roa = roa[:, :2]
+
+    for an in angles_s:
+        prev_bool = False
+        prev_roa = array([])
+        for om in omega_s:
+            curr_bool = is_elem_in_array(array([an, om]), roa)
+
+            if not prev_bool and curr_bool:
+                border = np.vstack((border, array([an, om])))
+            elif prev_bool and not curr_bool:
+                border = np.vstack((border, prev_roa))
+
+            prev_bool = curr_bool
+            prev_roa = array([an, om])
+
+    border = border[1:]
+    border = np.unique(border, axis=0)
+
+    plt.title("Lambda: {}".format(round(lmbd, 2)))
+    plt.xlabel("Angle")
+    plt.ylabel("Omega")
+    plt.plot(roa[:, 0], roa[:, 1], 'bo')
+    plt.plot(border[:, 0], border[:, 1], 'ro')
+    plt.grid()
+    plt.show()
+
+    return roa, border
+
+# # Building a y = kx + b coefficients of a line that divides border on two parts for more convenient interpolation
+# def diagonal_coeffs(dataset):
+#     xmin = np.amin(dataset[:, 0])
+#     ymin = np.amin(dataset[:, 1])
+#     xmax = np.amax(dataset[:, 0])
+#     ymax = np.amax(dataset[:, 1])
+#
+#     left_upper = array([xmin, np.amax(array(list(filter(lambda elem: elem[0] == xmin, dataset)))[:, 1])])
+#     upper_left = array([np.amin(array(list(filter(lambda elem: elem[1] == ymax, dataset)))[:, 0]), ymax])
+#
+#     right_lower = array([xmax, np.amin(array(list(filter(lambda elem: elem[0] == xmax, dataset)))[:, 1])])
+#     lower_right = array([np.amax(array(list(filter(lambda elem: elem[1] == ymin, dataset)))[:, 0]), ymin])
+#
+#     upper_left_certer = array([(left_upper[0] + upper_left[0]) / 2, (left_upper[1] + upper_left[1]) / 2])
+#     lower_right_certer = array([(right_lower[0] + lower_right[0]) / 2, (right_lower[1] + lower_right[1]) / 2])
+#
+#     k_coeff = (upper_left_certer[1] - lower_right_certer[1]) / (upper_left_certer[0] - lower_right_certer[0])
+#     b_coeff = upper_left_certer[1] - k_coeff * upper_left_certer[0]
+#
+#     return k_coeff, b_coeff
+#
+#
+# def divide_set(dataset):
+#     k, b = diagonal_coeffs(dataset)
+#
+#     print("Coeffs are:", k, b)
+#
+#     lower_set = array([0, 0])
+#     upper_set = array([0, 0])
+#
+#     for point in dataset:
+#         if point[1] >= k * point[0] + b:
+#             upper_set = np.vstack((upper_set, point))
+#         if point[1] <= k * point[0] + b:
+#             lower_set = np.vstack((lower_set, point))
+#
+#     print("Lower is:", lower_set[1:])
+#     print("Upper is:", upper_set[1:])
+#
+#     return lower_set[1:], upper_set[1:]
+
 
 # Quadrotor constants
 
@@ -285,63 +361,45 @@ sat_upper_boundary = 25600  # Upper boundary for square rotor angular speed
 angles_0 = array([7 * pi / 16, 7 * pi / 16, 7 * pi / 16])  # Initial angles
 omega_0 = array([-2, -2, -2])  # Initial angular velocities in the body frame
 
-t_span = np.linspace(0, 25 / lmbd, 100)  # Time diapason
+t_span = np.linspace(0, 25 / lmbd, 1000)  # Time diapason
 
-omega_s = np.linspace(-3.5, 3.5, 10)
-angles_s = np.linspace(-1.5, 1.5, 10)
+omega_seq = np.linspace(-4, 4, 100)
+angles_seq = np.linspace(-1.5, 1.5, 100)
 
-roa = array([0, 0, True])
+for i in np.linspace(0.1, 3, 10):
+    lmbd = i
+    build_roa_with_border(angles_seq, omega_seq)
 
-border = array([0, 0])
-
-for om in omega_s:
-    prev_bool = False
-    prev_roa = array([])
-    for an in angles_s:
-        data = array([an, om, is_delta_sat_converges(array([an, an, an]), array([om, om, om]))])
-        roa = np.vstack((roa, data))
-
-        if not prev_bool and data[2]:
-            border = np.vstack((border, array([an, om])))
-        elif prev_bool and not data[2]:
-            border = np.vstack((border, prev_roa[:2]))
-
-        prev_bool = data[2]
-        prev_roa = data
-
-
-roa = array(list(filter(lambda x: x[2] == 1, roa[1:])))
-
-fig = plt.figure()
-ax = fig.add_subplot(111)
-scatter = ax.scatter(roa[:, 0], roa[:, 1], c=roa[:, 2])
-ax.set_xlabel('Angle')
-ax.set_ylabel('Omega')
-plt.colorbar(scatter)
-fig.show()
-
-roa = roa[:, :2]
-
-for an in angles_s:
-    prev_bool = False
-    prev_roa = array([])
-    for om in omega_s:
-        curr_bool = is_elem_in_array(array([an, om]), roa)
-
-        if not prev_bool and curr_bool:
-            border = np.vstack((border, array([an, om])))
-        elif prev_bool and not curr_bool:
-            border = np.vstack((border, prev_roa))
-
-        prev_bool = curr_bool
-        prev_roa = array([an, om])
-
-border = border[1:]
-border = np.unique(border, axis=0)
-
-plt.plot(border[:, 0], border[:, 1], 'ro')
-plt.grid()
-plt.show()
-
-
-print("Centers are ", build_diagonal(border))
+# polynomial = np.poly1d(diagonal_coeffs(border))
+# diag_x = angles_s
+# diag_y = polynomial(diag_x)
+#
+# upper, lower = divide_set(border)
+#
+# plt.plot(upper[:, 0], upper[:, 1], 'ro')
+# plt.plot(lower[:, 0], lower[:, 1], 'b^')
+# plt.plot(diag_x, diag_y, 'g')
+# plt.grid()
+# plt.show()
+#
+#
+# def interpolate_pointset(dataset):
+#     t = np.arange(len(dataset))
+#     ti = np.linspace(0, t.max(), 10 * t.size)
+#
+#     xi = interp1d(t, dataset[:, 0], kind='cubic')(ti)
+#     yi = interp1d(t, dataset[:, 1], kind='cubic')(ti)
+#
+#     return xi, yi
+#
+#
+# upper_xi, upper_yi = interpolate_pointset(upper)
+# lower_xi, lower_yi = interpolate_pointset(lower)
+#
+# fig, ax = plt.subplots()
+# ax.plot(upper[:, 0], upper[:, 1], 'ro')
+# ax.plot(upper_xi, upper_yi, 'b')
+# ax.plot(lower[:, 0], lower[:, 1], 'g^')
+# ax.plot(lower_xi, lower_yi, 'y')
+# ax.margins(0.05)
+# plt.show()
