@@ -17,7 +17,7 @@ def scew_to_vec(matr):
     return array([matr[2][1], matr[0][2], matr[1][0]])
 
 
-# Q — Euler angles matrix
+# Q is an Euler angles matrix
 def q_matr(angles_vec):
     psi = angles_vec[0]
     theta = angles_vec[1]
@@ -29,22 +29,22 @@ def q_matr(angles_vec):
                   [-sin(theta), cos(theta) * sin(phi), cos(phi) * cos(theta)]])
 
 
-# P = Q_desired.T * Q -> I — goal of control
+# P = Q_desired.T * Q -> I is a goal of control
 def p_matr(q):
     return q_des.T @ q
 
 
-# Delta — goal of control
+# Delta is a goal of control
 def delta_matr(q):
     return p_matr(q) - p_matr(q).T
 
 
-# Omega — scew symmetric matrix made from angular velocities in the body frame
+# Omega is a scew symmetric matrix made from angular velocities in the body frame
 def omega_matr(omega_vec):
     return vec_to_scew(omega_vec)
 
 
-# Theta — matrix that contains components of dot Omega matrix
+# Theta is a matrix that contains components of dot Omega matrix
 def theta_matr(omega_vec):
     p = omega_vec[0]
     q = omega_vec[1]
@@ -53,7 +53,7 @@ def theta_matr(omega_vec):
         array([((I_y - I_z) / I_x) * q * r, ((I_z - I_x) / I_y) * p * r, ((I_x - I_y) / I_z) * p * q]))
 
 
-# Tau — matrix of controls, solution of matrix equation
+# Tau is a matrix of controls, solution of matrix equation
 # Normalized by inertia moment matrix
 def tau_norm_matr(q_matr, omega_vec, lmbd):
     p = p_matr(q_matr)
